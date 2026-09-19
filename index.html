@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Real-Time Face Recognition</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .glass-panel { background: rgba(255, 255, 255, 0.05); backdrop-filter: blur(10px); }
+    </style>
+</head>
+<body class="bg-gray-900 text-white min-h-screen font-sans">
+    <div class="container mx-auto px-4 py-8">
+        <header class="mb-8 text-center">
+            <h1 class="text-4xl font-bold text-blue-400">AI Identity Matrix</h1>
+            <p class="text-gray-400 mt-2">Live pure-Python facial recognition system</p>
+        </header>
+
+        <div class="flex flex-col lg:flex-row gap-8">
+            <div class="flex-1 glass-panel p-4 rounded-xl border border-gray-700 shadow-2xl">
+                <div class="relative w-full aspect-video bg-black rounded-lg overflow-hidden flex items-center justify-center border-2 border-gray-800">
+                    <img id="videoFeed" class="w-full h-full object-cover hidden" alt="Live Camera Feed">
+                    <p id="camPlaceholder" class="text-gray-500 font-semibold absolute">Camera Offline</p>
+                </div>
+                
+                <div class="flex gap-4 mt-6 justify-center">
+                    <button id="startBtn" onclick="startSystem()" class="px-6 py-2 bg-green-600 hover:bg-green-500 text-white font-bold rounded-lg transition shadow-lg shadow-green-500/30">
+                        Start Camera
+                    </button>
+                    <button id="stopBtn" onclick="stopSystem()" class="px-6 py-2 bg-red-600 hover:bg-red-500 text-white font-bold rounded-lg transition shadow-lg shadow-red-500/30 hidden">
+                        Stop System
+                    </button>
+                </div>
+            </div>
+
+            <div class="w-full lg:w-1/3 glass-panel p-6 rounded-xl border border-gray-700 shadow-2xl flex flex-col">
+                <h2 class="text-2xl font-semibold mb-4 border-b border-gray-700 pb-2">Session Status</h2>
+                
+                <div id="detectionList" class="flex-1 overflow-y-auto space-y-3">
+                    <p class="text-gray-500 italic text-center mt-10">Waiting for system to start...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let pollInterval;
+        const videoFeed = document.getElementById('videoFeed');
+        const camPlaceholder = document.getElementById('camPlaceholder');
+        const startBtn = document.getElementById('startBtn');
+        const stopBtn = document.getElementById('stopBtn');
+        const detectionList = document.getElementById('detectionList');
+
+        function startSystem() {
+            startBtn.classList.add('hidden');
+            stopBtn.classList.remove('hidden');
+            camPlaceholder.classList.add('hidden');
+            videoFeed.classList.remove('hidden');
+            
+            // Connect MJPEG Stream
+            videoFeed.src = "/video_feed?" + new Date().getTime(); // cache buster
+            
+            detectionList.innerHTML = '';
+            
+            // Start polling for live detections
+            pollInterval = setInterval(fetchLiveDetections, 1000);
+        }
+
+        async function fetchLiveDetections() {
+            try {
+                const res = await fetch('/status');
+                const data = await res.json();
+                renderList(data.detected, "Live Detected", "bg-green-500");
+            } catch (e) {
+                console.error("Polling error:", e);
+            }
+        }
+
+        async function stopSystem() {
+            clearInterval(pollInterval);
+            
+            // Shutdown camera feed visually
+            videoFeed.src = "";
+            videoFeed.classList.add('hidden');
+            camPlaceholder.classList.remove('hidden');
+            stopBtn.classList.add('hidden');
+            startBtn.classList.remove('hidden');
+            
+            // Call backend to stop and get summary
+            try {
+                const res = await fetch('/stop', { method: 'POST' });
+                const summary = await res.json();
+                
+                detectionList.innerHTML = `<h3 class="text-xl font-bold text-gray-300 mt-2 mb-3">Session Summary</h3>`;
+                renderList(summary.detected, "Present", "bg-green-500", true);
+                renderList(summary.absent, "Absent", "bg-red-500", true);
+                
+            } catch (e) {
+                console.error("Stop error:", e);
+            }
+        }
+
+        function renderList(items, label, dotColor, append = false) {
+            let html = items.map(item => `
+                <div class="flex items-center justify-between bg-gray-800 p-3 rounded-lg border border-gray-700">
+                    <span class="font-medium text-gray-200">${item}</span>
+                    <span class="flex items-center gap-2 text-sm text-gray-400">
+                        <span class="w-2.5 h-2.5 rounded-full ${dotColor}"></span>
+                        ${label}
+                    </span>
+                </div>
+            `).join('');
+            
+            if (items.length === 0 && !append) {
+                html = `<p class="text-gray-500 italic text-center mt-4">No faces detected yet.</p>`;
+            }
+            
+            if (append) {
+                if (items.length > 0) detectionList.innerHTML += html;
+            } else {
+                detectionList.innerHTML = html;
+            }
+        }
+    </script>
+</body>
+</html>
